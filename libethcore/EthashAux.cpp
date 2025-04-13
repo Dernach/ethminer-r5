@@ -17,17 +17,47 @@
 
 #include "EthashAux.h"
 
-#include <ethash/ethash.hpp>
+#include <memory>
+#include <stdexcept>
 
-using namespace dev;
-using namespace eth;
-
-Result EthashAux::eval(int epoch, h256 const& _headerHash, uint64_t _nonce) noexcept
+namespace dev
 {
-    auto headerHash = ethash::hash256_from_bytes(_headerHash.data());
-    auto& context = ethash::get_global_epoch_context(epoch);
-    auto result = ethash::hash(context, headerHash, _nonce);
-    h256 mix{reinterpret_cast<byte*>(result.mix_hash.bytes), h256::ConstructFromPointer};
-    h256 final{reinterpret_cast<byte*>(result.final_hash.bytes), h256::ConstructFromPointer};
-    return {final, mix};
+namespace eth
+{
+
+Result EthashAux::eval(int epoch, const h256& _headerHash, uint64_t _nonce) noexcept
+{
+    try
+    {
+        // Convert header hash to ethash format
+        auto headerHash = ethash::hash256_from_bytes(_headerHash.data());
+
+        // Create epoch context with automatic cleanup using unique_ptr
+        std::unique_ptr<ethash_epoch_context, decltype(&ethash_destroy_epoch_context)> context(
+            ethash_create_epoch_context(epoch), &ethash_destroy_epoch_context);
+
+        if (!context)
+        {
+            // Return empty result if context creation failed
+            return {h256(), h256()};
+        }
+
+        // Perform the ethash hash computation
+        ethash_result result = ethash_hash(context.get(), &headerHash, _nonce);
+
+        // Convert the result back to our hash types
+        h256 mix{reinterpret_cast<byte*>(result.mix_hash.bytes), h256::ConstructFromPointer};
+        h256 final{reinterpret_cast<byte*>(result.final_hash.bytes), h256::ConstructFromPointer};
+
+        return {final, mix};
+    }
+    catch (...)
+    {
+        // Ensure we maintain the noexcept guarantee by catching any exceptions
+        // Return empty result on error
+        return {h256(), h256()};
+    }
 }
+
+}  // namespace eth
+}  // namespace dev

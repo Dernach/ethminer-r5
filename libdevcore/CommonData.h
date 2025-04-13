@@ -24,6 +24,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <string>
 #include <type_traits>
@@ -36,8 +37,7 @@
 
 namespace dev
 {
-// String conversion functions, mainly to/from hex/nibble/byte representations.
-
+// Improved enums with enum class for type safety
 enum class WhenError
 {
     DontThrow = 0,
@@ -57,197 +57,237 @@ enum class ScaleSuffix
 };
 
 /// Convert a series of bytes to the corresponding string of hex duplets.
-/// @param _w specifies the width of the first of the elements. Defaults to two - enough to
-/// represent a byte.
-/// @example toHex("A\x69") == "4169"
-template <class T>
-std::string toHex(T const& _data, int _w = 2, HexPrefix _prefix = HexPrefix::DontAdd)
+/// @param _data data to convert to hex string
+/// @param _width specifies the minimum width of the first element
+/// @param _prefix whether to add 0x prefix
+/// @return hex string representation
+template <typename T>
+std::string toHex(const T& _data, int _width = 2, HexPrefix _prefix = HexPrefix::DontAdd)
 {
     std::ostringstream ret;
-    unsigned ii = 0;
+
+    if (_prefix == HexPrefix::Add)
+        ret << "0x";
+
+    bool isFirst = true;
     for (auto i : _data)
-        ret << std::hex << std::setfill('0') << std::setw(ii++ ? 2 : _w)
-            << (int)(typename std::make_unsigned<decltype(i)>::type)i;
-    return (_prefix == HexPrefix::Add) ? "0x" + ret.str() : ret.str();
+    {
+        ret << std::hex << std::setfill('0') << std::setw(isFirst ? _width : 2)
+            << static_cast<int>(typename std::make_unsigned<decltype(i)>::type(i));
+        isFirst = false;
+    }
+    return ret.str();
 }
 
-/// Converts a (printable) ASCII hex character into the correspnding integer value.
-/// @example fromHex('A') == 10 && fromHex('f') == 15 && fromHex('5') == 5
-int fromHex(char _i, WhenError _throw);
+/// Converts a (printable) ASCII hex character into the corresponding integer value.
+/// @param _char hex character to convert
+/// @param _throwOnError whether to throw on invalid hex chars
+/// @return integer value or -1 if invalid and not throwing
+int fromHex(char _char, WhenError _throwOnError);
 
-/// Converts a (printable) ASCII hex string into the corresponding byte stream.
-/// @example fromHex("41626261") == asBytes("Abba")
-/// If _throw = ThrowType::DontThrow, it replaces bad hex characters with 0's, otherwise it will
-/// throw an exception.
-bytes fromHex(std::string const& _s, WhenError _throw = WhenError::DontThrow);
+/// Converts a hex string into the corresponding byte stream.
+/// @param _hexString hex string to convert
+/// @param _throwOnError whether to throw on invalid input
+/// @return byte vector with binary representation
+bytes fromHex(const std::string& _hexString, WhenError _throwOnError = WhenError::DontThrow);
 
-/// Converts byte array to a string containing the same (binary) data. Unless
-/// the byte array happens to contain ASCII data, this won't be printable.
-inline std::string asString(bytes const& _b)
+/// Converts byte array to a string containing the same binary data.
+inline std::string asString(const bytes& _bytes)
 {
-    return std::string((char const*)_b.data(), (char const*)(_b.data() + _b.size()));
+    return std::string(reinterpret_cast<const char*>(_bytes.data()), _bytes.size());
 }
 
-/// Converts a string to a byte array containing the string's (byte) data.
-inline bytes asBytes(std::string const& _b)
+/// Converts a string to a byte array containing the string's binary data.
+inline bytes asBytes(const std::string& _str)
 {
-    return bytes((byte const*)_b.data(), (byte const*)(_b.data() + _b.size()));
+    return bytes(reinterpret_cast<const byte*>(_str.data()),
+        reinterpret_cast<const byte*>(_str.data() + _str.size()));
 }
 
+// Big-endian conversion functions
 
-// Big-endian to/from host endian conversion functions.
-
-/// Converts a templated integer value to the big-endian byte-stream represented on a templated
-/// collection. The size of the collection object will be unchanged. If it is too small, it will not
-/// represent the value properly, if too big then the additional elements will be zeroed out.
-/// @a Out will typically be either std::string or bytes.
-/// @a T will typically by unsigned, u160, u256 or bigint.
-template <class T, class Out>
-inline void toBigEndian(T _val, Out& o_out)
+/// Converts an integer value to big-endian byte representation
+/// @param _value integer value to convert
+/// @param _output output container
+template <typename T, typename OutContainer>
+inline void toBigEndian(T _value, OutContainer& _output)
 {
     static_assert(std::is_same<bigint, T>::value || !std::numeric_limits<T>::is_signed,
-        "only unsigned types or bigint supported");  // bigint does not carry sign bit on shift
-    for (auto i = o_out.size(); i != 0; _val >>= 8, i--)
+        "only unsigned types or bigint supported");
+
+    for (auto i = _output.size(); i != 0; _value >>= 8, i--)
     {
-        T v = _val & (T)0xff;
-        o_out[i - 1] = (typename Out::value_type)(uint8_t)v;
+        T v = _value & T(0xff);
+        _output[i - 1] = static_cast<typename OutContainer::value_type>(static_cast<uint8_t>(v));
     }
 }
 
-/// Converts a big-endian byte-stream represented on a templated collection to a templated integer
-/// value.
-/// @a _In will typically be either std::string or bytes.
-/// @a T will typically by unsigned, u160, u256 or bigint.
-template <class T, class _In>
-inline T fromBigEndian(_In const& _bytes)
+/// Converts a big-endian byte-stream to an integer value.
+/// @param _bytes big-endian byte representation
+/// @return integer value
+template <typename T, typename Container>
+inline T fromBigEndian(const Container& _bytes)
 {
-    T ret = (T)0;
-    for (auto i : _bytes)
+    T ret = 0;
+    for (auto b : _bytes)
+    {
         ret =
-            (T)((ret << 8) | (byte)(typename std::make_unsigned<typename _In::value_type>::type)i);
+            (ret << 8) |
+            static_cast<byte>(
+                static_cast<typename std::make_unsigned<typename Container::value_type>::type>(b));
+    }
     return ret;
 }
 
-/// Convenience functions for toBigEndian
-inline bytes toBigEndian(u256 _val)
+/// Create a byte array containing the big-endian representation of _value
+inline bytes toBigEndian(u256 _value)
 {
     bytes ret(32);
-    toBigEndian(std::move(_val), ret);
+    toBigEndian(std::move(_value), ret);
     return ret;
 }
-inline bytes toBigEndian(u160 _val)
+
+/// Create a byte array containing the big-endian representation of _value
+inline bytes toBigEndian(u160 _value)
 {
     bytes ret(20);
-    toBigEndian(_val, ret);
+    toBigEndian(_value, ret);
     return ret;
 }
 
-/// Convenience function for toBigEndian.
-/// @returns a byte array just big enough to represent @a _val.
-template <class T>
-inline bytes toCompactBigEndian(T _val, unsigned _min = 0)
+/// Create a byte array just big enough to represent _value in big-endian format.
+template <typename T>
+inline bytes toCompactBigEndian(T _value, unsigned _minBytes = 0)
 {
     static_assert(std::is_same<bigint, T>::value || !std::numeric_limits<T>::is_signed,
-        "only unsigned types or bigint supported");  // bigint does not carry sign bit on shift
-    int i = 0;
-    for (T v = _val; v; ++i, v >>= 8)
+        "only unsigned types or bigint supported");
+
+    int bytesNeeded = 0;
+    for (T v = _value; v; ++bytesNeeded, v >>= 8)
     {
     }
-    bytes ret(std::max<unsigned>(_min, i), 0);
-    toBigEndian(_val, ret);
+
+    bytes ret(std::max<unsigned>(_minBytes, bytesNeeded), 0);
+    toBigEndian(_value, ret);
     return ret;
 }
 
-/// Convenience function for conversion of a u256 to hex
-inline std::string toHex(u256 val, HexPrefix prefix = HexPrefix::DontAdd)
+/// Convert u256 value to hex string
+inline std::string toHex(u256 _value, HexPrefix _prefix = HexPrefix::DontAdd)
 {
-    std::string str = toHex(toBigEndian(val));
-    return (prefix == HexPrefix::Add) ? "0x" + str : str;
+    std::string hex = toHex(toBigEndian(_value));
+    return (_prefix == HexPrefix::Add) ? "0x" + hex : hex;
 }
 
-inline std::string toHex(uint64_t _n, HexPrefix _prefix = HexPrefix::DontAdd, int _bytes = 16)
+/// Convert uint64_t to hex with fixed width
+inline std::string toHex(uint64_t _value, HexPrefix _prefix = HexPrefix::DontAdd, int _width = 16)
 {
-    // sizeof returns the number of bytes (not the number of bits)
-    // thus if CHAR_BIT != 8 sizeof(uint64_t) will return != 8
-    // Use fixed constant multiplier of 16
-    std::ostringstream ret;
-    ret << std::hex << std::setfill('0') << std::setw(_bytes) << _n;
-    return (_prefix == HexPrefix::Add) ? "0x" + ret.str() : ret.str();
+    std::ostringstream ss;
+    ss << std::hex << std::setfill('0') << std::setw(_width) << _value;
+    return (_prefix == HexPrefix::Add) ? "0x" + ss.str() : ss.str();
 }
 
-inline std::string toHex(uint32_t _n, HexPrefix _prefix = HexPrefix::DontAdd, int _bytes = 8)
+/// Convert uint32_t to hex with fixed width
+inline std::string toHex(uint32_t _value, HexPrefix _prefix = HexPrefix::DontAdd, int _width = 8)
 {
-    // sizeof returns the number of bytes (not the number of bits)
-    // thus if CHAR_BIT != 8 sizeof(uint64_t) will return != 4
-    // Use fixed constant multiplier of 8
-    std::ostringstream ret;
-    ret << std::hex << std::setfill('0') << std::setw(_bytes) << _n;
-    return (_prefix == HexPrefix::Add) ? "0x" + ret.str() : ret.str();
+    std::ostringstream ss;
+    ss << std::hex << std::setfill('0') << std::setw(_width) << _value;
+    return (_prefix == HexPrefix::Add) ? "0x" + ss.str() : ss.str();
 }
 
-inline std::string toCompactHex(uint64_t _n, HexPrefix _prefix = HexPrefix::DontAdd)
+/// Convert uint64_t to compact hex (no leading zeros)
+inline std::string toCompactHex(uint64_t _value, HexPrefix _prefix = HexPrefix::DontAdd)
 {
-    std::ostringstream ret;
-    ret << std::hex << _n;
-    return (_prefix == HexPrefix::Add) ? "0x" + ret.str() : ret.str();
+    std::ostringstream ss;
+    ss << std::hex << _value;
+    return (_prefix == HexPrefix::Add) ? "0x" + ss.str() : ss.str();
 }
 
-inline std::string toCompactHex(uint32_t _n, HexPrefix _prefix = HexPrefix::DontAdd)
+/// Convert uint32_t to compact hex (no leading zeros)
+inline std::string toCompactHex(uint32_t _value, HexPrefix _prefix = HexPrefix::DontAdd)
 {
-    std::ostringstream ret;
-    ret << std::hex << _n;
-    return (_prefix == HexPrefix::Add) ? "0x" + ret.str() : ret.str();
+    std::ostringstream ss;
+    ss << std::hex << _value;
+    return (_prefix == HexPrefix::Add) ? "0x" + ss.str() : ss.str();
 }
-
-
-
-// Algorithms for string and string-like collections.
 
 /// Escapes a string into the C-string representation.
-/// @p _all if true will escape all characters, not just the unprintable ones.
-std::string escaped(std::string const& _s, bool _all = true);
+/// @param _str string to escape
+/// @param _escapeAll if true will escape all characters, not just unprintable ones
+std::string escaped(const std::string& _str, bool _escapeAll = true);
 
-// General datatype convenience functions.
-
-/// Determine bytes required to encode the given integer value. @returns 0 if @a _i is zero.
-template <class T>
-inline unsigned bytesRequired(T _i)
+/// Determine bytes required to encode the given integer value.
+/// @returns 0 if @a _value is zero.
+template <typename T>
+inline unsigned bytesRequired(T _value)
 {
     static_assert(std::is_same<bigint, T>::value || !std::numeric_limits<T>::is_signed,
-        "only unsigned types or bigint supported");  // bigint does not carry sign bit on shift
-    unsigned i = 0;
-    for (; _i != 0; ++i, _i >>= 8)
+        "only unsigned types or bigint supported");
+
+    unsigned count = 0;
+    for (; _value != 0; ++count, _value >>= 8)
     {
     }
-    return i;
+    return count;
 }
 
-/// Sets environment variable.
-///
-/// Portable wrapper for setenv / _putenv C library functions.
+/// Sets environment variable in a cross-platform way.
+/// @param name environment variable name
+/// @param value environment variable value
+/// @param override whether to override if already set
+/// @return success or failure
 bool setenv(const char name[], const char value[], bool override = false);
 
-/// Gets a target hash from given difficulty
+/// Calculate target hash from difficulty
+/// @param diff mining difficulty
+/// @param _prefix whether to add 0x prefix
+/// @return target hash as hex string
 std::string getTargetFromDiff(double diff, HexPrefix _prefix = HexPrefix::Add);
 
-/// Gets the difficulty expressed in hashes to target
-double getHashesToTarget(std::string _target);
+/// Calculate required hashes for a target
+/// @param _target target hash as hex string
+/// @return number of hashes required on average
+double getHashesToTarget(const std::string _target);
 
-/// Generic function to scale a value
-std::string getScaledSize(double _value, double _divisor, int _precision, std::string _sizes[],
-    size_t _numsizes, ScaleSuffix _suffix = ScaleSuffix::Add);
+/// Format a value with appropriate scale and suffix
+/// @param _value value to format
+/// @param _divisor divisor for scaling (e.g., 1000 or 1024)
+/// @param _precision decimal places to show
+/// @param _sizes array of suffix strings
+/// @param _numsizes number of suffixes available
+/// @param _suffix whether to add the suffix
+/// @return formatted string
+std::string getScaledSize(double _value, double _divisor, int _precision,
+    const std::string _sizes[], size_t _numsizes, ScaleSuffix _suffix = ScaleSuffix::Add);
 
-/// Formats hashrate
-std::string getFormattedHashes(double _hr, ScaleSuffix _suffix = ScaleSuffix::Add, int _precision = 2);
+/// Format hashrate with appropriate units (h, Kh, Mh, Gh)
+/// @param _hr hashrate to format
+/// @param _suffix whether to add unit suffix
+/// @param _precision decimal places to show
+/// @return formatted hashrate string
+std::string getFormattedHashes(
+    double _hr, ScaleSuffix _suffix = ScaleSuffix::Add, int _precision = 2);
 
-/// Formats hashrate
+/// Format memory size with appropriate units (B, KB, MB, GB)
+/// @param _mem memory size to format
+/// @param _suffix whether to add unit suffix
+/// @param _precision decimal places to show
+/// @return formatted memory size string
 std::string getFormattedMemory(
     double _mem, ScaleSuffix _suffix = ScaleSuffix::Add, int _precision = 2);
 
-/// Adjust string to a fixed length filling chars to the Left
-std::string padLeft(std::string _value, size_t _length, char _fillChar);
+/// Add padding characters to the left of a string to reach specified length
+/// @param _value original string
+/// @param _length desired length
+/// @param _fillChar character to use for padding
+/// @return padded string
+std::string padLeft(const std::string& _value, size_t _length, char _fillChar);
 
-/// Adjust string to a fixed length filling chars to the Right
-std::string padRight(std::string _value, size_t _length, char _fillChar);
+/// Add padding characters to the right of a string to reach specified length
+/// @param _value original string
+/// @param _length desired length
+/// @param _fillChar character to use for padding
+/// @return padded string
+std::string padRight(const std::string& _value, size_t _length, char _fillChar);
 
 }  // namespace dev

@@ -26,51 +26,63 @@
 
 namespace dev
 {
+
+/**
+ * @brief Type aliases for standard mutex and guards for simplified syntax
+ */
 using Mutex = std::mutex;
 using Guard = std::lock_guard<std::mutex>;
 using UniqueGuard = std::unique_lock<std::mutex>;
 
+/**
+ * @brief Generic guard wrapper that adds a boolean flag for use in for-loops
+ *
+ * This is primarily used for implementing scoped mutex macros
+ *
+ * @tparam GuardType The type of guard to wrap (e.g. std::lock_guard)
+ * @tparam MutexType The type of mutex to use (e.g. std::mutex)
+ */
 template <class GuardType, class MutexType>
 struct GenericGuardBool : GuardType
 {
-    GenericGuardBool(MutexType& _m) : GuardType(_m) {}
+    /**
+     * @brief Construct a new Generic Guard Bool object
+     * @param _m The mutex to lock
+     */
+    explicit GenericGuardBool(MutexType& _m) : GuardType(_m) {}
+
+    /**
+     * @brief Boolean flag used to control the containing for-loop
+     */
     bool b = true;
 };
 
-/** @brief Simple block guard.
- * The expression/block following is guarded though the given mutex.
+/**
+ * @brief Simple scoped mutex lock macro for guarding code blocks
+ *
+ * This macro creates a scoped mutex lock that guards the following statement
+ * or block. The mutex is locked at the beginning of the scope and automatically
+ * unlocked when execution leaves the scope.
+ *
  * Usage:
  * @code
  * Mutex m;
  * unsigned d;
- * ...
- * ETH_(m) d = 1;
- * ...
- * ETH_(m) { for (auto d = 10; d > 0; --d) foo(d); d = 0; }
- * @endcode
  *
- * There are several variants of this basic mechanism for different Mutex types and Guards.
+ * // Guard a single statement
+ * DEV_GUARDED(m) d = 1;
  *
- * There is also the UNGUARD variant which allows an unguarded expression/block to exist within a
- * guarded expression. eg:
- *
- * @code
- * Mutex m;
- * int d;
- * ...
- * ETH_GUARDED(m)
- * {
- *   for (auto d = 50; d > 25; --d)
- *     foo(d);
- *   ETH_UNGUARDED(m)
- *     bar();
- *   for (; d > 0; --d)
- *     foo(d);
+ * // Guard a block
+ * DEV_GUARDED(m) {
+ *   for (auto d = 10; d > 0; --d) foo(d);
+ *   d = 0;
  * }
  * @endcode
+ *
+ * @param MUTEX The mutex to lock
  */
-
-#define DEV_GUARDED(MUTEX) \
-    for (GenericGuardBool<Guard, Mutex> __eth_l(MUTEX); __eth_l.b; __eth_l.b = false)
+#define DEV_GUARDED(MUTEX)                                                              \
+    for (::dev::GenericGuardBool<::dev::Guard, ::dev::Mutex> __eth_l(MUTEX); __eth_l.b; \
+        __eth_l.b = false)
 
 }  // namespace dev

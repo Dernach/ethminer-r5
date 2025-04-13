@@ -32,49 +32,62 @@
 
 namespace dev
 {
+
+// Global random number generator for fixed hash functions
 extern std::random_device s_fixedHashEngine;
 
-/// Fixed-size raw-byte array container type, with an API optimised for storing hashes.
-/// Transparently converts to/from the corresponding arithmetic type; this will
-/// assume the data contained in the hash is big-endian.
+/**
+ * @brief Fixed-size raw-byte array container type, optimized for storing hashes.
+ *
+ * Transparently converts to/from the corresponding arithmetic type, assuming
+ * the data contained in the hash is big-endian.
+ *
+ * @tparam N Size of the hash in bytes
+ */
 template <unsigned N>
 class FixedHash
 {
 public:
+    // Platform-specific ellipsis symbol for abridged representation
 #if defined(_WIN32)
-    const char* k_ellipsis = "...";
+    static constexpr const char* k_ellipsis = "...";
 #else
-    const char* k_ellipsis = "\342\200\246";
+    static constexpr const char* k_ellipsis = "\342\200\246";
 #endif
 
-    /// The corresponding arithmetic type.
+    /// The corresponding arithmetic type for this hash size
     using Arith = boost::multiprecision::number<boost::multiprecision::cpp_int_backend<N * 8, N * 8,
         boost::multiprecision::unsigned_magnitude, boost::multiprecision::unchecked, void>>;
 
-    /// The size of the container.
-    enum
-    {
-        size = N
-    };
+    /// The size of the container in bytes
+    static constexpr unsigned size = N;
 
-    /// A dummy flag to avoid accidental construction from pointer.
+    /// Flag to avoid accidental construction from pointer
     enum ConstructFromPointerType
     {
         ConstructFromPointer
     };
 
-    /// Method to convert from a string.
+    /// Method to convert from a string
     enum ConstructFromHashType
     {
-        AlignLeft,
-        AlignRight,
-        FailIfDifferent
+        AlignLeft,       ///< Align the input data to the left (pad right with zeros)
+        AlignRight,      ///< Align the input data to the right (pad left with zeros)
+        FailIfDifferent  ///< Fail construction if sizes don't match
     };
 
-    /// Construct an empty hash.
+    /**
+     * @brief Construct an empty hash (all zeros)
+     */
     FixedHash() { m_data.fill(0); }
 
-    /// Construct from another hash, filling with zeroes or cropping as necessary.
+    /**
+     * @brief Construct from another hash, filling with zeroes or cropping as necessary
+     *
+     * @tparam M Size of the source hash
+     * @param _h Source hash to copy from
+     * @param _t Alignment type for the copy operation
+     */
     template <unsigned M>
     explicit FixedHash(FixedHash<M> const& _h, ConstructFromHashType _t = AlignLeft)
     {
@@ -84,17 +97,30 @@ public:
             m_data[_t == AlignRight ? N - 1 - i : i] = _h[_t == AlignRight ? M - 1 - i : i];
     }
 
-    /// Convert from the corresponding arithmetic type.
-    FixedHash(Arith const& _arith) { toBigEndian(_arith, m_data); }
+    /**
+     * @brief Convert from the corresponding arithmetic type
+     *
+     * @param _arith Arithmetic value to convert
+     */
+    explicit FixedHash(Arith const& _arith) { toBigEndian(_arith, m_data); }
 
-    /// Convert from unsigned
+    /**
+     * @brief Convert from unsigned integer
+     *
+     * @param _u Unsigned integer to convert
+     */
     explicit FixedHash(unsigned _u) { toBigEndian(_u, m_data); }
 
-    /// Explicitly construct, copying from a byte array.
+    /**
+     * @brief Explicitly construct, copying from a byte array
+     *
+     * @param _b Byte array to copy from
+     * @param _t Hash construction type (alignment or fail behavior)
+     */
     explicit FixedHash(bytes const& _b, ConstructFromHashType _t = FailIfDifferent)
     {
         if (_b.size() == N)
-            memcpy(m_data.data(), _b.data(), std::min<unsigned>(_b.size(), N));
+            std::memcpy(m_data.data(), _b.data(), std::min<unsigned>(_b.size(), N));
         else
         {
             m_data.fill(0);
@@ -108,11 +134,16 @@ public:
         }
     }
 
-    /// Explicitly construct, copying from a byte array.
+    /**
+     * @brief Explicitly construct, copying from a byte array reference
+     *
+     * @param _b Byte array reference to copy from
+     * @param _t Hash construction type (alignment or fail behavior)
+     */
     explicit FixedHash(bytesConstRef _b, ConstructFromHashType _t = FailIfDifferent)
     {
         if (_b.size() == N)
-            memcpy(m_data.data(), _b.data(), std::min<unsigned>(_b.size(), N));
+            std::memcpy(m_data.data(), _b.data(), std::min<unsigned>(_b.size(), N));
         else
         {
             m_data.fill(0);
@@ -126,27 +157,45 @@ public:
         }
     }
 
-    /// Explicitly construct, copying from a bytes in memory with given pointer.
+    /**
+     * @brief Explicitly construct, copying from bytes in memory
+     *
+     * @param _bs Pointer to byte array
+     * @param _ Construction from pointer flag (unused)
+     */
     explicit FixedHash(byte const* _bs, ConstructFromPointerType /*unused*/)
     {
-        memcpy(m_data.data(), _bs, N);
+        std::memcpy(m_data.data(), _bs, N);
     }
 
-    /// Explicitly construct, copying from a  string.
+    /**
+     * @brief Construct from a hex string
+     *
+     * @param _s Hex string to parse
+     */
     explicit FixedHash(std::string const& _s)
       : FixedHash(fromHex(_s, WhenError::Throw), FailIfDifferent)
     {}
 
-    /// Convert to arithmetic type.
+    /**
+     * @brief Convert to arithmetic type
+     *
+     * @return Arith The arithmetic representation
+     */
     operator Arith() const { return fromBigEndian<Arith>(m_data); }
 
-    /// @returns true iff this is the empty hash.
+    /**
+     * @brief Check if this is a non-zero hash
+     *
+     * @return true if any byte is non-zero
+     * @return false if all bytes are zero
+     */
     explicit operator bool() const
     {
         return std::any_of(m_data.begin(), m_data.end(), [](byte _b) { return _b != 0; });
     }
 
-    // The obvious comparison operators.
+    // Comparison operators
     bool operator==(FixedHash const& _c) const { return m_data == _c.m_data; }
     bool operator!=(FixedHash const& _c) const { return m_data != _c.m_data; }
     bool operator<(FixedHash const& _c) const
@@ -164,7 +213,7 @@ public:
     bool operator<=(FixedHash const& _c) const { return operator==(_c) || operator<(_c); }
     bool operator>(FixedHash const& _c) const { return !operator<=(_c); }
 
-    // The obvious binary operators.
+    // Bitwise operations
     FixedHash& operator^=(FixedHash const& _c)
     {
         for (unsigned i = 0; i < N; ++i)
@@ -172,6 +221,7 @@ public:
         return *this;
     }
     FixedHash operator^(FixedHash const& _c) const { return FixedHash(*this) ^= _c; }
+
     FixedHash& operator|=(FixedHash const& _c)
     {
         for (unsigned i = 0; i < N; ++i)
@@ -179,6 +229,7 @@ public:
         return *this;
     }
     FixedHash operator|(FixedHash const& _c) const { return FixedHash(*this) |= _c; }
+
     FixedHash& operator&=(FixedHash const& _c)
     {
         for (unsigned i = 0; i < N; ++i)
@@ -186,6 +237,7 @@ public:
         return *this;
     }
     FixedHash operator&(FixedHash const& _c) const { return FixedHash(*this) &= _c; }
+
     FixedHash operator~() const
     {
         FixedHash ret;
@@ -194,48 +246,101 @@ public:
         return ret;
     }
 
-    // Big-endian increment.
+    /**
+     * @brief Big-endian increment
+     *
+     * @return FixedHash& Reference to self after increment
+     */
     FixedHash& operator++()
     {
         for (unsigned i = size; i > 0 && !++m_data[--i];)
         {
+            // Keep incrementing until we find a position where we don't overflow
         }
         return *this;
     }
 
-    /// @returns a particular byte from the hash.
+    /**
+     * @brief Access a particular byte from the hash
+     *
+     * @param _i Index of the byte
+     * @return byte& Reference to the byte
+     */
     byte& operator[](unsigned _i) { return m_data[_i]; }
-    /// @returns a particular byte from the hash.
+
+    /**
+     * @brief Access a particular byte from the hash (const version)
+     *
+     * @param _i Index of the byte
+     * @return byte The byte value
+     */
     byte operator[](unsigned _i) const { return m_data[_i]; }
 
-    /// @returns an abridged version of the hash as a user-readable hex string.
-
+    /**
+     * @brief Get an abridged version of the hash as a user-readable hex string
+     *
+     * @return std::string Abridged hex representation
+     */
     std::string abridged() const { return toHex(ref().cropped(0, 4)) + k_ellipsis; }
 
-    /// @returns the hash as a user-readable hex string.
-    std::string hex(HexPrefix _prefix = HexPrefix::DontAdd) const { return toHex(ref(), 2, _prefix); }
+    /**
+     * @brief Get the hash as a user-readable hex string
+     *
+     * @param _prefix Whether to add 0x prefix
+     * @return std::string Complete hex representation
+     */
+    std::string hex(HexPrefix _prefix = HexPrefix::DontAdd) const
+    {
+        return toHex(ref(), 2, _prefix);
+    }
 
-    /// @returns a mutable byte vector_ref to the object's data.
+    /**
+     * @brief Get a mutable byte reference to the object's data
+     *
+     * @return bytesRef Mutable reference
+     */
     bytesRef ref() { return bytesRef(m_data.data(), N); }
 
-    /// @returns a constant byte vector_ref to the object's data.
+    /**
+     * @brief Get a constant byte reference to the object's data
+     *
+     * @return bytesConstRef Constant reference
+     */
     bytesConstRef ref() const { return bytesConstRef(m_data.data(), N); }
 
-    /// @returns a mutable byte pointer to the object's data.
+    /**
+     * @brief Get a mutable byte pointer to the object's data
+     *
+     * @return byte* Pointer to data
+     */
     byte* data() { return m_data.data(); }
 
-    /// @returns a constant byte pointer to the object's data.
+    /**
+     * @brief Get a constant byte pointer to the object's data
+     *
+     * @return byte const* Constant pointer to data
+     */
     byte const* data() const { return m_data.data(); }
 
-    /// Populate with random data.
+    /**
+     * @brief Populate with random data
+     *
+     * @tparam Engine Random number engine type
+     * @param _eng Random number engine instance
+     */
     template <class Engine>
     void randomize(Engine& _eng)
     {
+        std::uniform_int_distribution<uint16_t> dist(0, 255);
         for (auto& i : m_data)
-            i = (uint8_t)std::uniform_int_distribution<uint16_t>(0, 255)(_eng);
+            i = static_cast<uint8_t>(dist(_eng));
     }
 
-    /// @returns a random valued object.
+    /**
+     * @brief Create a hash with random content
+     *
+     * @return FixedHash Random hash
+     */
     static FixedHash random()
     {
         FixedHash ret;
@@ -243,32 +348,47 @@ public:
         return ret;
     }
 
+    /**
+     * @brief Hash functor for use in containers like unordered_map
+     */
     struct hash
     {
-        /// Make a hash of the object's data.
+        /**
+         * @brief Create a hash of the object's data
+         *
+         * @param _value Hash to process
+         * @return size_t Hash value
+         */
         size_t operator()(FixedHash const& _value) const
         {
             return boost::hash_range(_value.m_data.cbegin(), _value.m_data.cend());
         }
     };
 
+    /**
+     * @brief Reset the hash to all zeros
+     */
     void clear() { m_data.fill(0); }
 
 private:
     std::array<byte, N> m_data;  ///< The binary data.
 };
 
-/// Fast equality operator for h256.
+/**
+ * @brief Fast equality operator for h256
+ */
 template <>
 inline bool FixedHash<32>::operator==(FixedHash<32> const& _other) const
 {
-    const uint64_t* hash1 = (const uint64_t*)data();
-    const uint64_t* hash2 = (const uint64_t*)_other.data();
+    const uint64_t* hash1 = reinterpret_cast<const uint64_t*>(data());
+    const uint64_t* hash2 = reinterpret_cast<const uint64_t*>(_other.data());
     return (hash1[0] == hash2[0]) && (hash1[1] == hash2[1]) && (hash1[2] == hash2[2]) &&
            (hash1[3] == hash2[3]);
 }
 
-/// Fast std::hash compatible hash function object for h256.
+/**
+ * @brief Fast std::hash compatible hash function for h256
+ */
 template <>
 inline size_t FixedHash<32>::hash::operator()(FixedHash<32> const& value) const
 {
@@ -276,18 +396,25 @@ inline size_t FixedHash<32>::hash::operator()(FixedHash<32> const& value) const
     return boost::hash_range(data, data + 4);
 }
 
-/// Stream I/O for the FixedHash class.
+/**
+ * @brief Stream output operator for FixedHash
+ *
+ * @tparam N Size of the hash
+ * @param _out Output stream
+ * @param _h Hash to output
+ * @return std::ostream& Reference to the output stream
+ */
 template <unsigned N>
 inline std::ostream& operator<<(std::ostream& _out, FixedHash<N> const& _h)
 {
     _out << std::noshowbase << std::hex << std::setfill('0');
     for (unsigned i = 0; i < N; ++i)
-        _out << std::setw(2) << (int)_h[i];
+        _out << std::setw(2) << static_cast<int>(_h[i]);
     _out << std::dec;
     return _out;
 }
 
-// Common types of FixedHash.
+// Common types of FixedHash
 using h2048 = FixedHash<256>;
 using h1024 = FixedHash<128>;
 using h520 = FixedHash<65>;
@@ -296,10 +423,18 @@ using h256 = FixedHash<32>;
 using h160 = FixedHash<20>;
 using h128 = FixedHash<16>;
 using h64 = FixedHash<8>;
+
+// Vector types of common hashes
 using h512s = std::vector<h512>;
 using h256s = std::vector<h256>;
 using h160s = std::vector<h160>;
 
+/**
+ * @brief Convert a vector of h256 to string
+ *
+ * @param _bs Vector of h256
+ * @return std::string String representation
+ */
 inline std::string toString(h256s const& _bs)
 {
     std::ostringstream out;
@@ -314,25 +449,31 @@ inline std::string toString(h256s const& _bs)
 
 namespace std
 {
-/// Forward std::hash<dev::FixedHash> to dev::FixedHash::hash.
+/// Forward std::hash<dev::FixedHash> to dev::FixedHash::hash
+
 template <>
 struct hash<dev::h64> : dev::h64::hash
 {
 };
+
 template <>
 struct hash<dev::h128> : dev::h128::hash
 {
 };
+
 template <>
 struct hash<dev::h160> : dev::h160::hash
 {
 };
+
 template <>
 struct hash<dev::h256> : dev::h256::hash
 {
 };
+
 template <>
 struct hash<dev::h512> : dev::h512::hash
 {
 };
+
 }  // namespace std

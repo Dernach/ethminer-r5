@@ -694,7 +694,7 @@ std::string EthStratumClient::processError(Json::Value& responseObject)
         else if (responseObject["error"].isConvertibleTo(Json::ValueType::objectValue))
         {
             for (Json::Value::iterator i = responseObject["error"].begin();
-                 i != responseObject["error"].end(); ++i)
+                i != responseObject["error"].end(); ++i)
             {
                 Json::Value k = i.key();
                 Json::Value v = (*i);
@@ -881,16 +881,17 @@ void EthStratumClient::processResponse(Json::Value& responseObject)
                     cnote << "Stratum mode : EthereumStratum/1.0.0 (NiceHash)";
                     startSession();
                     m_session->subscribed.store(true, memory_order_relaxed);
-                  
+
                     // Notify we're ready for extra nonce subscribtion on the fly
                     // reply to this message should not perform any logic
                     jReq["id"] = unsigned(2);
                     jReq["method"] = "mining.extranonce.subscribe";
                     jReq["params"] = Json::Value(Json::arrayValue);
                     send(jReq);
-                  
+
                     std::string enonce = jResult.get(Json::Value::ArrayIndex(1), "").asString();
-                    if (!enonce.empty()) processExtranonce(enonce);
+                    if (!enonce.empty())
+                        processExtranonce(enonce);
 
                     // Eventually request authorization
                     m_authpending.store(true, std::memory_order_relaxed);
@@ -1153,7 +1154,7 @@ void EthStratumClient::processResponse(Json::Value& responseObject)
             bool isStale = false;
             if (!_isSuccess)
             {
-                string errCode = responseObject["error"].get("code","").asString();
+                string errCode = responseObject["error"].get("code", "").asString();
                 if (errCode.substr(0, 1) == "2")
                     _isSuccess = isStale = true;
             }
@@ -1167,7 +1168,6 @@ void EthStratumClient::processResponse(Json::Value& responseObject)
             }
             else
             {
-                
                 if (m_onSolutionRejected)
                 {
                     cwarn << "Reject reason : "
@@ -1638,14 +1638,14 @@ void EthStratumClient::submitSolution(const Solution& solution)
         jReq["params"].append(
             toHex(solution.nonce, HexPrefix::DontAdd).substr(solution.work.exSizeBytes));
         break;
-        
+
     case EthStratumClient::ETHEREUMSTRATUM2:
 
         jReq["params"].append(solution.work.job);
         jReq["params"].append(
             toHex(solution.nonce, HexPrefix::DontAdd).substr(solution.work.exSizeBytes));
         jReq["params"].append(m_session->workerId);
-        break;        
+        break;
     }
 
     enqueue_response_plea();

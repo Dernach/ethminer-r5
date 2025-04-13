@@ -14,8 +14,8 @@ cable_configure_toolchain(DEFAULT cxx11)
 set(HUNTER_CONFIGURATION_TYPES Release CACHE STRING "Build type of Hunter packages")
 set(HUNTER_JOBS_NUMBER 6 CACHE STRING "Number of parallel builds used by Hunter")
 HunterGate(
-    URL "https://github.com/cpp-pm/hunter/archive/v0.23.320.tar.gz"
-    SHA1 "9b4e732afd22f40482c11ad6342f7d336634226f"
+    URL "https://github.com/cpp-pm/hunter/archive/v0.25.8.tar.gz"
+    SHA1 "26c79d587883ec910bce168e25f6ac4595f97033"
     LOCAL
 )
 
@@ -24,12 +24,12 @@ set(PROJECT_VERSION 0.19.0)
 
 cable_set_build_type(DEFAULT Release CONFIGURATION_TYPES Release RelWithDebInfo)
 
-option(ETHASHCL "Build with OpenCL mining" ON)
+option(ETHASHCL "Build with OpenCL mining" OFF)
 option(ETHASHCUDA "Build with CUDA mining" ON)
 option(ETHASHCPU "Build with CPU mining (only for development)" OFF)
 option(ETHDBUS "Build with D-Bus support" OFF)
 option(APICORE "Build with API Server support" ON)
-option(BINKERN "Install AMD binary kernels" ON)
+option(BINKERN "Install AMD binary kernels" OFF)
 option(DEVBUILD "Log developer metrics" OFF)
 option(USE_SYS_OPENCL "Build with system OpenCL" OFF)
 
@@ -92,6 +92,18 @@ message("-----------------------------------------------------------------------
 message("")
 
 include(EthCompilerSettings)
+if(MSVC)
+    # Forcer l'utilisation de la bibliothèque d'exécution dynamique
+    foreach(flag_var
+        CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
+        CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO)
+        if(${flag_var} MATCHES "/MT")
+            string(REGEX REPLACE "/MT" "/MD" ${flag_var} "${${flag_var}}")
+        endif()
+    endforeach()
+
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /NODEFAULTLIB:libcmt.lib")
+endif()
 if(UNIX AND NOT APPLE)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libstdc++")
 endif()

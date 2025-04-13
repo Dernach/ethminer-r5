@@ -26,4 +26,7 @@
 using namespace std;
 using namespace dev;
 
+// Initialize random device for FixedHash randomization
 std::random_device dev::s_fixedHashEngine;
+
+// Additional initialization could be added here if needed

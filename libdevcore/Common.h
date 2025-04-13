@@ -1,51 +1,57 @@
 // ethminer -- Ethereum miner with OpenCL, CUDA and stratum support.
-// Copyright 2018 ethminer Authors.
+// Copyright 2018-2023 ethminer Authors.
 // Licensed under GNU General Public License, Version 3. See the LICENSE file.
 
 /// @file
-/// Very common stuff (i.e. that every other header needs except vector_ref.h).
+/// Common types and definitions used throughout the codebase.
 
 #pragma once
 
-#include "vector_ref.h"
-
+#include <cstdint>
+#include <iomanip>
+#include <sstream>
 #include <string>
 #include <vector>
 
 #include <boost/multiprecision/cpp_int.hpp>
 
-using byte = uint8_t;
+#include "vector_ref.h"
+
+// Use uint8_t instead of custom byte type to avoid confusion
+using byte = std::uint8_t;
 
 namespace dev
 {
-// Binary data types.
+// Binary data types - prefer vector_ref for improved performance with large data
 using bytes = std::vector<byte>;
 using bytesRef = vector_ref<byte>;
-using bytesConstRef = vector_ref<byte const>;
+using bytesConstRef = vector_ref<const byte>;
 
-// Numeric types.
-using bigint = boost::multiprecision::number<boost::multiprecision::cpp_int_backend<>>;
-using u64 = boost::multiprecision::number<boost::multiprecision::cpp_int_backend<64, 64,
-    boost::multiprecision::unsigned_magnitude, boost::multiprecision::unchecked, void>>;
-using u128 = boost::multiprecision::number<boost::multiprecision::cpp_int_backend<128, 128,
-    boost::multiprecision::unsigned_magnitude, boost::multiprecision::unchecked, void>>;
-using u256 = boost::multiprecision::number<boost::multiprecision::cpp_int_backend<256, 256,
-    boost::multiprecision::unsigned_magnitude, boost::multiprecision::unchecked, void>>;
-using u160 = boost::multiprecision::number<boost::multiprecision::cpp_int_backend<160, 160,
-    boost::multiprecision::unsigned_magnitude, boost::multiprecision::unchecked, void>>;
-using u512 = boost::multiprecision::number<boost::multiprecision::cpp_int_backend<512, 512,
-    boost::multiprecision::unsigned_magnitude, boost::multiprecision::unchecked, void>>;
+// Numeric types - using more descriptive namespace alias for boost multiprecision
+namespace mp = boost::multiprecision;
 
-// Null/Invalid values for convenience.
-static const u256 Invalid256 = ~(u256)0;
+// Clearly define numeric types with consistent naming
+using bigint = mp::number<mp::cpp_int_backend<>>;
+
+template <unsigned N>
+using uint_t = mp::number<mp::cpp_int_backend<N, N, mp::unsigned_magnitude, mp::unchecked, void>>;
+
+using u64 = uint_t<64>;
+using u128 = uint_t<128>;
+using u160 = uint_t<160>;
+using u256 = uint_t<256>;
+using u512 = uint_t<512>;
+
+// Null/Invalid values
+const u256 Invalid256 = ~u256(0);
 
 /// Converts arbitrary value to string representation using std::stringstream.
-template <class _T>
-std::string toString(_T const& _t)
+template <typename T>
+inline std::string toString(const T& _value)
 {
-    std::ostringstream o;
-    o << _t;
-    return o.str();
+    std::ostringstream stream;
+    stream << _value;
+    return stream.str();
 }
 
 }  // namespace dev

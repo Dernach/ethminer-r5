@@ -73,6 +73,39 @@ struct MiningChannel : public LogChannel
 
 class MinerCLI
 {
+private:
+    CLI::App app{"Ethminer - GPU Ethash miner"};
+
+    template<typename T>
+    CLI::Option* addOption(const std::string& name, T& variable, const std::string& desc = "", bool defaulted = false) {
+        return this->app.add_option(name, variable, desc);
+    }
+
+    // Fonction spécifique pour les strings
+    CLI::Option* addStrOption(const std::string& name, std::string& variable, const std::string& desc = "", bool defaulted = false) {
+        return this->app.add_option(name, variable, desc);
+    }
+
+    // Fonction spécifique pour les unsigned int
+    CLI::Option* addUIntOption(const std::string& name, unsigned int& variable, const std::string& desc = "", bool defaulted = false) {
+        return this->app.add_option(name, variable, desc);
+    }
+
+    // Fonction spécifique pour les int
+    CLI::Option* addIntOption(const std::string& name, int& variable, const std::string& desc = "", bool defaulted = false) {
+        return this->app.add_option(name, variable, desc);
+    }
+
+    // Fonction pour ajouter des ensembles de valeurs string
+    CLI::Option* addStrSet(const std::string& name, std::string& variable, const std::vector<std::string>& options, const std::string& desc = "", bool defaulted = false) {
+        return this->app.add_option(name, variable, desc)->check(CLI::IsMember(options));
+    }
+
+    // Fonction pour ajouter des ensembles de valeurs unsigned int
+    CLI::Option* addUIntSet(const std::string& name, unsigned int& variable, const std::vector<unsigned int>& options, const std::string& desc = "", bool defaulted = false) {
+        return this->app.add_option(name, variable, desc)->check(CLI::IsMember(options));
+    }
+
 public:
     enum class OperationMode
     {
@@ -211,19 +244,18 @@ public:
         }
     }
 #endif
+
     bool validateArgs(int argc, char** argv)
     {
         std::queue<string> warnings;
 
-        CLI::App app("Ethminer - GPU Ethash miner");
-
         bool bhelp = false;
-        string shelpExt;
+        std::string shelpExt;
 
-        app.set_help_flag();
-        app.add_flag("-h,--help", bhelp, "Show help");
+        this->app.set_help_flag();
+        this->app.add_flag("-h,--help", bhelp, "Show help");
 
-        app.add_set("-H,--help-ext", shelpExt,
+        addStrSet("-H,--help-ext", shelpExt,
             {
                 "con", "test",
 #if ETH_ETHASHCL
@@ -244,49 +276,49 @@ public:
 
         bool version = false;
 
-        app.add_option("--ergodicity", m_FarmSettings.ergodicity, "", true)->check(CLI::Range(0, 2));
+        addUIntOption("--ergodicity", m_FarmSettings.ergodicity, "", true)->check(CLI::Range(0, 2));
 
-        app.add_flag("-V,--version", version, "Show program version");
+        this->app.add_flag("-V,--version", version, "Show program version");
 
-        app.add_option("-v,--verbosity", g_logOptions, "", true)->check(CLI::Range(LOG_NEXT - 1));
+        addIntOption("-v,--verbosity", g_logOptions, "", true);
 
-        app.add_option("--farm-recheck", m_PoolSettings.getWorkPollInterval, "", true)->check(CLI::Range(1, 99999));
+        addUIntOption("--farm-recheck", m_PoolSettings.getWorkPollInterval, "", true)->check(CLI::Range(1, 99999));
 
-        app.add_option("--farm-retries", m_PoolSettings.connectionMaxRetries, "", true)->check(CLI::Range(0, 99999));
+        addUIntOption("--farm-retries", m_PoolSettings.connectionMaxRetries, "", true)->check(CLI::Range(0, 99999));
 
-        app.add_option("--retry-delay", m_PoolSettings.delayBeforeRetry, "", true)
+        addUIntOption("--retry-delay", m_PoolSettings.delayBeforeRetry, "", true)
             ->check(CLI::Range(1, 999));
         
-        app.add_option("--work-timeout", m_PoolSettings.noWorkTimeout, "", true)
+        addUIntOption("--work-timeout", m_PoolSettings.noWorkTimeout, "", true)
             ->check(CLI::Range(180, 99999));
 
-        app.add_option("--response-timeout", m_PoolSettings.noResponseTimeout, "", true)
+        addUIntOption("--response-timeout", m_PoolSettings.noResponseTimeout, "", true)
             ->check(CLI::Range(2, 999));
 
-        app.add_flag("-R,--report-hashrate,--report-hr", m_PoolSettings.reportHashrate, "");
+        this->app.add_flag("-R,--report-hashrate,--report-hr", m_PoolSettings.reportHashrate, "");
 
-        app.add_option("--display-interval", m_cliDisplayInterval, "", true)
+        addOption("--display-interval", m_cliDisplayInterval, "", true)
             ->check(CLI::Range(1, 1800));
 
-        app.add_option("--HWMON", m_FarmSettings.hwMon, "", true)->check(CLI::Range(0, 2));
+        addUIntOption("--HWMON", m_FarmSettings.hwMon, "", true)->check(CLI::Range(0, 2));
 
-        app.add_flag("--exit", g_exitOnError, "");
+        this->app.add_flag("--exit", g_exitOnError, "");
 
         vector<string> pools;
-        app.add_option("-P,--pool", pools, "");
+        addOption("-P,--pool", pools, "");
 
-        app.add_option("--failover-timeout", m_PoolSettings.poolFailoverTimeout, "", true)
+        addUIntOption("--failover-timeout", m_PoolSettings.poolFailoverTimeout, "", true)
             ->check(CLI::Range(0, 999));
 
-        app.add_flag("--nocolor", g_logNoColor, "");
+        this->app.add_flag("--nocolor", g_logNoColor, "");
 
-        app.add_flag("--syslog", g_logSyslog, "");
+        this->app.add_flag("--syslog", g_logSyslog, "");
 
-        app.add_flag("--stdout", g_logStdout, "");
+        this->app.add_flag("--stdout", g_logStdout, "");
 
 #if API_CORE
 
-        app.add_option("--api-bind", m_api_bind, "", true)
+        addStrOption("--api-bind", m_api_bind, "", true)
             ->check([this](const string& bind_arg) -> string {
                 try
                 {
@@ -301,79 +333,77 @@ public:
                 return string("");
             });
 
-        app.add_option("--api-port", m_api_port, "", true)->check(CLI::Range(-65535, 65535));
+        addIntOption("--api-port", m_api_port, "", true)->check(CLI::Range(-65535, 65535));
 
-        app.add_option("--api-password", m_api_password, "");
+        addStrOption("--api-password", m_api_password, "");
 
 #endif
 
 #if ETH_ETHASHCL || ETH_ETHASHCUDA || ETH_ETHASH_CPU
 
-        app.add_flag("--list-devices", m_shouldListDevices, "");
+        this->app.add_flag("--list-devices", m_shouldListDevices, "");
 
 #endif
 
 #if ETH_ETHASHCL
 
-        app.add_option("--opencl-device,--opencl-devices,--cl-devices", m_CLSettings.devices, "");
+        addOption("--opencl-device,--opencl-devices,--cl-devices", m_CLSettings.devices, "");
 
-        app.add_option("--cl-global-work", m_CLSettings.globalWorkSize, "", true);
+        addUIntOption("--cl-global-work", m_CLSettings.globalWorkSize, "", true);
 
-        app.add_set("--cl-local-work", m_CLSettings.localWorkSize, {64, 128, 256}, "", true);
+        addUIntSet("--cl-local-work", m_CLSettings.localWorkSize, {64, 128, 256}, "", true);
 
-        app.add_flag("--cl-nobin", m_CLSettings.noBinary, "");
+        this->app.add_flag("--cl-nobin", m_CLSettings.noBinary, "");
 
-        app.add_flag("--cl-noexit", m_CLSettings.noExit, "");
+        this->app.add_flag("--cl-noexit", m_CLSettings.noExit, "");
 
 #endif
 
 #if ETH_ETHASHCUDA
 
-        app.add_option("--cuda-devices,--cu-devices", m_CUSettings.devices, "");
+        addOption("--cuda-devices,--cu-devices", m_CUSettings.devices, "");
 
-        app.add_option("--cuda-grid-size,--cu-grid-size", m_CUSettings.gridSize, "", true)
-            ->check(CLI::Range(1, 131072));
+        addUIntOption("--cuda-grid-size,--cu-grid-size", m_CUSettings.gridSize, "", true)
+    ->check(CLI::Range(1, 131072));
 
-        app.add_set(
-            "--cuda-block-size,--cu-block-size", m_CUSettings.blockSize, {32, 64, 128, 256}, "", true);
+        addUIntSet("--cuda-block-size,--cu-block-size", m_CUSettings.blockSize, {32, 64, 128, 256}, "", true);
 
         string sched = "sync";
-        app.add_set(
+        addStrSet(
             "--cuda-schedule,--cu-schedule", sched, {"auto", "spin", "yield", "sync"}, "", true);
 
-        app.add_option("--cuda-streams,--cu-streams", m_CUSettings.streams, "", true)
-            ->check(CLI::Range(1, 99));
+        addUIntOption("--cuda-streams,--cu-streams", m_CUSettings.streams, "", true)
+    ->check(CLI::Range(1, 99));
 
 #endif
 
 #if ETH_ETHASHCPU
 
-        app.add_option("--cpu-devices,--cp-devices", m_CPSettings.devices, "");
+        addOption("--cpu-devices,--cp-devices", m_CPSettings.devices, "");
 
 #endif
 
-        app.add_flag("--noeval", m_FarmSettings.noEval, "");
+        this->app.add_flag("--noeval", m_FarmSettings.noEval, "");
 
-        app.add_option("-L,--dag-load-mode", m_FarmSettings.dagLoadMode, "", true)->check(CLI::Range(1));
+        addUIntOption("-L,--dag-load-mode", m_FarmSettings.dagLoadMode, "", true)->check(CLI::Range(1));
 
         bool cl_miner = false;
-        app.add_flag("-G,--opencl", cl_miner, "");
+        this->app.add_flag("-G,--opencl", cl_miner, "");
 
         bool cuda_miner = false;
-        app.add_flag("-U,--cuda", cuda_miner, "");
+        this->app.add_flag("-U,--cuda", cuda_miner, "");
 
         bool cpu_miner = false;
 #if ETH_ETHASHCPU
-        app.add_flag("--cpu", cpu_miner, "");
+        this->app.add_flag("--cpu", cpu_miner, "");
 #endif
-        auto sim_opt = app.add_option("-Z,--simulation,-M,--benchmark", m_PoolSettings.benchmarkBlock, "", true);
 
-        app.add_option("--tstop", m_FarmSettings.tempStop, "", true)->check(CLI::Range(30, 100));
-        app.add_option("--tstart", m_FarmSettings.tempStart, "", true)->check(CLI::Range(30, 100));
+        addUIntOption("--tstop", m_FarmSettings.tempStop, "", true)->check(CLI::Range(30, 100));
+        addUIntOption("--tstart", m_FarmSettings.tempStart, "", true)->check(CLI::Range(30, 100));
 
 
         // Exception handling is held at higher level
-        app.parse(argc, argv);
+        this->app.parse(argc, argv);
         if (bhelp)
         {
             help();
@@ -418,7 +448,7 @@ public:
             Operation mode Simulation do not require pool definitions
             Operation mode Stratum or GetWork do need at least one
         */
-
+        auto sim_opt = addUIntOption("--simulation,-Z,--benchmark", m_PoolSettings.benchmarkBlock, "", true);
         if (sim_opt->count())
         {
             m_mode = OperationMode::Simulation;
@@ -775,7 +805,7 @@ public:
              << "    -U,--cuda           Mine/Benchmark using CUDA only" << endl
 #endif
 #if ETH_ETHASHCPU
-             << "    --cpu               Development ONLY ! (NO MINING)" << endl
+             << "    --cpu               Enable CPU mining with Ethash-R5 algorithm" << endl
 #endif
              << endl
              << "Connection options :" << endl

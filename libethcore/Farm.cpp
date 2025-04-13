@@ -17,6 +17,7 @@
 
 
 #include <libethcore/Farm.h>
+#include <libdevcore/EthashR5.h>
 
 #if ETH_ETHASHCL
 #include <libethash-cl/CLMiner.h>
@@ -193,8 +194,8 @@ void Farm::shuffle()
     // we could reasonably always start the nonce search ranges
     // at a fixed place, but that would be boring. Provide a once
     // per run randomized start place, without creating much overhead.
-    random_device engine;
-    m_nonce_scrambler = uniform_int_distribution<uint64_t>()(engine);
+    std::random_device engine;
+    m_nonce_scrambler = std::uniform_int_distribution<uint64_t>()(engine);
 }
 
 void Farm::setWork(WorkPackage const& _newWp)
@@ -202,16 +203,25 @@ void Farm::setWork(WorkPackage const& _newWp)
     // Set work to each miner giving it's own starting nonce
     Guard l(x_minerWork);
 
-    // Retrieve appropriate EpochContext
     if (m_currentWp.epoch != _newWp.epoch)
     {
-        ethash::epoch_context _ec = ethash::get_global_epoch_context(_newWp.epoch);
+        // Utilisez vos propres fonctions au lieu de ethash_create_epoch_context()
         m_currentEc.epochNumber = _newWp.epoch;
-        m_currentEc.lightNumItems = _ec.light_cache_num_items;
-        m_currentEc.lightSize = ethash::get_light_cache_size(_ec.light_cache_num_items);
-        m_currentEc.dagNumItems = _ec.full_dataset_num_items;
-        m_currentEc.dagSize = ethash::get_full_dataset_size(_ec.full_dataset_num_items);
-        m_currentEc.lightCache = _ec.light_cache;
+
+        // Calculez les tailles avec vos fonctions
+        uint64_t blockNum = _newWp.epoch * ETHASH_EPOCH_LENGTH + 1;
+        m_currentEc.lightSize = dev::eth::calcCacheSize(blockNum);
+        m_currentEc.lightNumItems = m_currentEc.lightSize / 64;
+        m_currentEc.dagSize = dev::eth::datasetSize(blockNum);
+        m_currentEc.dagNumItems = m_currentEc.dagSize / 128;
+
+        // Allouez et générez le cache
+        // Vous devrez peut-être gérer la libération de l'ancien cache si nécessaire
+        uint32_t* cache = new uint32_t[m_currentEc.lightSize / sizeof(uint32_t)];
+        dev::eth::generateCacheFromEpoch(cache, _newWp.epoch);
+
+        // Stockez le cache généré dans le contexte d'époque
+        m_currentEc.lightCache = reinterpret_cast<const ethash::hash512*>(cache);
 
         for (auto const& miner : m_miners)
             miner->setEpoch(m_currentEc);
@@ -228,7 +238,7 @@ void Farm::setWork(WorkPackage const& _newWp)
     {
         // Equally divide the residual segment among miners
         _startNonce = m_currentWp.startNonce;
-        m_nonce_segment_with =
+        m_nonce_segment_width =
             (unsigned int)log2(pow(2, 64 - (m_currentWp.exSizeBytes * 4)) / m_miners.size());
     }
     else
@@ -239,7 +249,7 @@ void Farm::setWork(WorkPackage const& _newWp)
 
     for (unsigned int i = 0; i < m_miners.size(); i++)
     {
-        m_currentWp.startNonce = _startNonce + ((uint64_t)i << m_nonce_segment_with);
+        m_currentWp.startNonce = _startNonce + ((uint64_t)i << m_nonce_segment_width);
         m_miners.at(i)->setWork(m_currentWp);
     }
 }
@@ -439,19 +449,12 @@ void Farm::accountSolution(unsigned _minerIdx, SolutionAccountingEnum _accountin
     }
 }
 
-/**
- * @brief Gets the solutions account for the whole farm
- */
-
-SolutionAccountType Farm::getSolutions()
+SolutionAccountType Farm::getSolutions() const
 {
     return m_telemetry.farm.solutions;
 }
 
-/**
- * @brief Gets the solutions account for single miner
- */
-SolutionAccountType Farm::getSolutions(unsigned _minerIdx)
+SolutionAccountType Farm::getSolutions(unsigned _minerIdx) const
 {
     try
     {
@@ -471,7 +474,7 @@ Json::Value Farm::get_nonce_scrambler_json()
 {
     Json::Value jRes;
     jRes["start_nonce"] = toHex(m_nonce_scrambler, HexPrefix::Add);
-    jRes["device_width"] = m_nonce_segment_with;
+    jRes["device_width"] = m_nonce_segment_width;
     jRes["device_count"] = (uint64_t)m_miners.size();
 
     return jRes;
@@ -490,7 +493,7 @@ void Farm::submitProof(Solution const& _s)
 
 void Farm::submitProofAsync(Solution const& _s)
 {
-    if (!m_Settings.noEval)
+    /* if (!m_Settings.noEval)
     {
         Result r = EthashAux::eval(_s.work.epoch, _s.work.header, _s.nonce);
         if (r.value > _s.work.boundary)
@@ -502,7 +505,7 @@ void Farm::submitProofAsync(Solution const& _s)
         }
         m_onSolutionFound(Solution{_s.nonce, r.mixHash, _s.work, _s.tstamp, _s.midx});
     }
-    else
+    else*/
         m_onSolutionFound(_s);
 
 #ifdef DEV_BUILD

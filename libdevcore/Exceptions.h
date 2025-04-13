@@ -32,35 +32,67 @@
 
 namespace dev
 {
-/// Base class for all exceptions.
+/**
+ * @brief Base class for all exceptions in the library.
+ *
+ * Provides common functionality for all exception types, including
+ * custom message support and integration with boost::exception.
+ */
 struct Exception : virtual std::exception, virtual boost::exception
 {
-    Exception(const std::string& _message = std::string()) : m_message(std::move(_message)) {}
+    /**
+     * @brief Construct a new Exception object
+     * @param _message Optional custom error message
+     */
+    explicit Exception(std::string _message = std::string()) : m_message(std::move(_message)) {}
+
+    /**
+     * @brief Returns the error message
+     * @return const char* Pointer to error message or std::exception::what()
+     */
     const char* what() const noexcept override
     {
         return m_message.empty() ? std::exception::what() : m_message.c_str();
     }
 
 private:
-    std::string m_message;
+    std::string m_message;  ///< Custom error message
 };
 
-#define DEV_SIMPLE_EXCEPTION(X)                                   \
-    struct X : virtual Exception                                  \
-    {                                                             \
-        const char* what() const noexcept override { return #X; } \
+/**
+ * @brief Macro to create simple exception types
+ *
+ * Creates a new exception type that inherits from Exception
+ * and overrides what() to return the type name
+ */
+#define DEV_SIMPLE_EXCEPTION(X)                    \
+    struct X : virtual Exception                   \
+    {                                              \
+        const char* what() const noexcept override \
+        {                                          \
+            return #X;                             \
+        }                                          \
     }
 
-
+// Common exception types
 DEV_SIMPLE_EXCEPTION(BadHexCharacter);
 
+/**
+ * @brief Exception thrown when an external function fails
+ */
 struct ExternalFunctionFailure : virtual Exception
 {
 public:
-    ExternalFunctionFailure(const std::string& _f) : Exception("Function " + _f + "() failed.") {}
+    /**
+     * @brief Construct a new ExternalFunctionFailure object
+     * @param _f Name of the failed function
+     */
+    explicit ExternalFunctionFailure(const std::string& _f)
+      : Exception("Function " + _f + "() failed.")
+    {}
 };
 
-// error information to be added to exceptions
+// Error information types to be added to exceptions
 using errinfo_invalidSymbol = boost::error_info<struct tag_invalidSymbol, char>;
 using errinfo_comment = boost::error_info<struct tag_comment, std::string>;
 using errinfo_required = boost::error_info<struct tag_required, bigint>;

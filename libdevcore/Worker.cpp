@@ -19,11 +19,12 @@
  * @date 2014
  */
 
+#include "Worker.h"
+
 #include <chrono>
 #include <thread>
 
 #include "Log.h"
-#include "Worker.h"
 
 using namespace std;
 using namespace dev;
@@ -31,33 +32,39 @@ using namespace dev;
 void Worker::startWorking()
 {
     DEV_BUILD_LOG_PROGRAMFLOW(cnote, "Worker::startWorking() begin");
-    //	cnote << "startWorking for thread" << m_name;
+
     Guard l(x_work);
     if (m_work)
     {
-        WorkerState ex = WorkerState::Stopped;
-        m_state.compare_exchange_strong(ex, WorkerState::Starting);
+        // If we have a thread already, try to restart it
+        WorkerState expectedState = WorkerState::Stopped;
+        m_state.compare_exchange_strong(expectedState, WorkerState::Starting);
     }
     else
     {
+        // No thread exists yet, create a new one
         m_state = WorkerState::Starting;
-        m_work.reset(new thread([&]() {
+        m_work.reset(new thread([this]() {
+            // Set thread name for debugging
             setThreadName(m_name.c_str());
-            //			cnote << "Thread begins";
+
+            // Main thread loop
             while (m_state != WorkerState::Killing)
             {
-                WorkerState ex = WorkerState::Starting;
-                bool ok = m_state.compare_exchange_strong(ex, WorkerState::Started);
-                //				cnote << "Trying to set Started: Thread was" << (unsigned)ex << "; "
-                //<< ok;
-                (void)ok;
+                // Transition from Starting to Started state
+                WorkerState expectedState = WorkerState::Starting;
+                bool transitionSucceeded =
+                    m_state.compare_exchange_strong(expectedState, WorkerState::Started);
+                (void)transitionSucceeded;  // Avoid unused variable warning
 
                 try
                 {
+                    // Call the derived class implementation
                     workLoop();
                 }
                 catch (std::exception const& _e)
                 {
+                    // Handle exceptions in worker thread
                     clog(WarnChannel) << "Exception thrown in Worker thread: " << _e.what();
                     if (g_exitOnError)
                     {
@@ -66,22 +73,24 @@ void Worker::startWorking()
                     }
                 }
 
-                //				ex = WorkerState::Stopping;
-                //				m_state.compare_exchange_strong(ex, WorkerState::Stopped);
+                // Transition to Stopped state
+                WorkerState previousState = m_state.exchange(WorkerState::Stopped);
 
-                ex = m_state.exchange(WorkerState::Stopped);
-                //				cnote << "State: Stopped: Thread was" << (unsigned)ex;
-                if (ex == WorkerState::Killing || ex == WorkerState::Starting)
-                    m_state.exchange(ex);
+                // Preserve Killing or Starting states
+                if (previousState == WorkerState::Killing || previousState == WorkerState::Starting)
+                    m_state.exchange(previousState);
 
+                // Wait while in Stopped state
                 while (m_state == WorkerState::Stopped)
                     this_thread::sleep_for(chrono::milliseconds(20));
             }
         }));
-        //		cnote << "Spawning" << m_name;
     }
+
+    // Wait until the thread is fully started
     while (m_state == WorkerState::Starting)
         this_thread::sleep_for(chrono::microseconds(20));
+
     DEV_BUILD_LOG_PROGRAMFLOW(cnote, "Worker::startWorking() end");
 }
 
@@ -90,37 +99,49 @@ void Worker::triggerStopWorking()
     DEV_GUARDED(x_work)
     if (m_work)
     {
-        WorkerState ex = WorkerState::Started;
-        m_state.compare_exchange_strong(ex, WorkerState::Stopping);
+        // Only transition from Started to Stopping
+        WorkerState expectedState = WorkerState::Started;
+        m_state.compare_exchange_strong(expectedState, WorkerState::Stopping);
     }
 }
 
 void Worker::stopWorking()
 {
     DEV_BUILD_LOG_PROGRAMFLOW(cnote, "Worker::stopWorking() begin");
+
     DEV_GUARDED(x_work)
     if (m_work)
     {
-        WorkerState ex = WorkerState::Started;
-        m_state.compare_exchange_strong(ex, WorkerState::Stopping);
+        // Signal the thread to stop
+        WorkerState expectedState = WorkerState::Started;
+        m_state.compare_exchange_strong(expectedState, WorkerState::Stopping);
 
-        DEV_BUILD_LOG_PROGRAMFLOW(cnote, "Worker::stopWorking() waiting for WorkerState::Stopped begin");
+        // Wait for the thread to actually stop
+        DEV_BUILD_LOG_PROGRAMFLOW(
+            cnote, "Worker::stopWorking() waiting for WorkerState::Stopped begin");
         while (m_state != WorkerState::Stopped)
             this_thread::sleep_for(chrono::microseconds(20));
-        DEV_BUILD_LOG_PROGRAMFLOW(cnote, "Worker::stopWorking() waiting for WorkerState::Stopped end");
+        DEV_BUILD_LOG_PROGRAMFLOW(
+            cnote, "Worker::stopWorking() waiting for WorkerState::Stopped end");
     }
+
     DEV_BUILD_LOG_PROGRAMFLOW(cnote, "Worker::stopWorking() end");
 }
 
 Worker::~Worker()
 {
     DEV_BUILD_LOG_PROGRAMFLOW(cnote, "Worker::~Worker() begin");
+
     DEV_GUARDED(x_work)
     if (m_work)
     {
+        // Signal thread termination
         m_state.exchange(WorkerState::Killing);
+
+        // Wait for thread to exit and clean up
         m_work->join();
         m_work.reset();
     }
+
     DEV_BUILD_LOG_PROGRAMFLOW(cnote, "Worker::~Worker() end");
 }

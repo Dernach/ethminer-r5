@@ -25,6 +25,9 @@
 
 #include <chrono>
 #include <ctime>
+#include <iomanip>
+#include <sstream>
+#include <string>
 
 #include "Common.h"
 #include "CommonData.h"
@@ -32,15 +35,18 @@
 #include "Terminal.h"
 #include "vector_ref.h"
 
-/// The logging system's current verbosity.
-#define LOG_JSON 1
-#define LOG_PER_GPU 2
-#define LOG_CONNECT 32
-#define LOG_SWITCH 64
-#define LOG_SUBMIT 128
-#define LOG_PROGRAMFLOW 256
-#define LOG_NEXT 512
+/// Logging system verbosity options
+#define LOG_JSON 1           ///< Log JSON messages
+#define LOG_PER_GPU 2        ///< Log per-GPU statistics
+#define LOG_CONNECT 32       ///< Log connection events
+#define LOG_SWITCH 64        ///< Log mining switch events
+#define LOG_SUBMIT 128       ///< Log solution submission events
+#define LOG_PROGRAMFLOW 256  ///< Log general program flow
+#define LOG_NEXT 512         ///< Reserved for future use
 
+/**
+ * @brief Debug logging macro for program flow, enabled only in debug builds
+ */
 #if DEV_BUILD
 #define DEV_BUILD_LOG_PROGRAMFLOW(_S, _V) \
     if (g_logOptions & LOG_PROGRAMFLOW)   \
@@ -52,42 +58,91 @@
 #define DEV_BUILD_LOG_PROGRAMFLOW(_S, _V) ((void)(0))
 #endif
 
-extern unsigned g_logOptions;
+/// Global logging options
+extern int g_logOptions;
+/// Disable color output
 extern bool g_logNoColor;
+/// Log to syslog
 extern bool g_logSyslog;
+/// Log to stdout
 extern bool g_logStdout;
 
 namespace dev
 {
-/// A simple log-output function that prints log messages to stdout.
-void simpleDebugOut(std::string const&);
 
-/// Set the current thread's log name.
+/**
+ * @brief Output a debug message to the log
+ * @param _s Message to log
+ */
+void simpleDebugOut(std::string const& _s);
+
+/**
+ * @brief Set the name of the current thread for logging
+ * @param _n Thread name
+ */
 void setThreadName(char const* _n);
 
-/// Set the current thread's log name.
+/**
+ * @brief Get the name of the current thread
+ * @return std::string Thread name
+ */
 std::string getThreadName();
 
-/// The default logging channels. Each has an associated verbosity and three-letter prefix (name()
-/// ). Channels should inherit from LogChannel and define name() and verbosity.
+/**
+ * @brief Base class for all log channels
+ */
 struct LogChannel
 {
-    static const char* name();
-};
-struct WarnChannel : public LogChannel
-{
-    static const char* name();
-};
-struct NoteChannel : public LogChannel
-{
+    /**
+     * @brief Get the channel's name/prefix
+     * @return const char* Channel identifier
+     */
     static const char* name();
 };
 
+/**
+ * @brief Warning log channel
+ */
+struct WarnChannel : public LogChannel
+{
+    /**
+     * @brief Get the channel's name/prefix
+     * @return const char* Channel identifier
+     */
+    static const char* name();
+};
+
+/**
+ * @brief Informational note log channel
+ */
+struct NoteChannel : public LogChannel
+{
+    /**
+     * @brief Get the channel's name/prefix
+     * @return const char* Channel identifier
+     */
+    static const char* name();
+};
+
+/**
+ * @brief Base class for log output streams
+ *
+ * Handles the formatting of log entries with timestamps and thread info
+ */
 class LogOutputStreamBase
 {
 public:
-    LogOutputStreamBase(char const* _id);
+    /**
+     * @brief Construct a new log output stream
+     * @param _id Channel identifier
+     */
+    explicit LogOutputStreamBase(char const* _id);
 
+    /**
+     * @brief Append data to the log stream
+     * @tparam T Type of data to append
+     * @param _t Data to append
+     */
     template <class T>
     void append(T const& _t)
     {
@@ -95,23 +150,36 @@ public:
     }
 
 protected:
-    std::stringstream m_sstr;  ///< The accrued log entry.
+    std::stringstream m_sstr;  ///< The accrued log entry
 };
 
-/// Logging class, iostream-like, that can be shifted to.
+/**
+ * @brief Logging class with iostream-like interface
+ *
+ * Provides a convenient way to format and output log messages
+ *
+ * @tparam Id The log channel identifier type
+ */
 template <class Id>
-class LogOutputStream : LogOutputStreamBase
+class LogOutputStream : public LogOutputStreamBase
 {
 public:
-    /// Construct a new object.
-    /// If _term is true the the prefix info is terminated with a ']' character; if not it ends only
-    /// with a '|' character.
+    /**
+     * @brief Construct a new log output stream object
+     */
     LogOutputStream() : LogOutputStreamBase(Id::name()) {}
 
-    /// Destructor. Posts the accrued log entry to the g_logPost function.
+    /**
+     * @brief Destructor - outputs the log message
+     */
     ~LogOutputStream() { simpleDebugOut(m_sstr.str()); }
 
-    /// Shift arbitrary data to the log. Spaces will be added between items as required.
+    /**
+     * @brief Stream insertion operator
+     * @tparam T Type of data to append
+     * @param _t Data to append to the log
+     * @return LogOutputStream& Reference to this stream for chaining
+     */
     template <class T>
     LogOutputStream& operator<<(T const& _t)
     {
@@ -120,10 +188,14 @@ public:
     }
 };
 
+/**
+ * @brief Helper macro to create a log stream for the specified channel
+ */
 #define clog(X) dev::LogOutputStream<X>()
 
-// Simple cout-like stream objects for accessing common log channels.
-// Dirties the global namespace, but oh so convenient...
+/**
+ * @brief Simplified stream objects for common log channels
+ */
 #define cnote clog(dev::NoteChannel)
 #define cwarn clog(dev::WarnChannel)
 

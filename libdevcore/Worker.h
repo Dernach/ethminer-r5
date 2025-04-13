@@ -24,54 +24,100 @@
 #include <signal.h>
 #include <atomic>
 #include <cassert>
+#include <memory>
 #include <string>
 #include <thread>
 
 #include "Guards.h"
 
+/**
+ * @brief Global flag to control error handling behavior
+ * If true, the application will exit on encountering errors
+ */
 extern bool g_exitOnError;
 
 namespace dev
 {
+
+/**
+ * @brief Enumeration of possible worker thread states
+ */
 enum class WorkerState
 {
-    Starting,
-    Started,
-    Stopping,
-    Stopped,
-    Killing
+    Starting,  ///< Worker is starting up
+    Started,   ///< Worker is active and running
+    Stopping,  ///< Worker is in the process of stopping
+    Stopped,   ///< Worker has stopped and is idle
+    Killing    ///< Worker is being terminated
 };
 
+/**
+ * @brief Base class for worker threads in the application
+ *
+ * Provides a standard way to manage background worker threads
+ * with proper lifecycle control and state management.
+ */
 class Worker
 {
 public:
-    Worker(std::string _name) : m_name(std::move(_name)) {}
+    /**
+     * @brief Create a new worker with the given name
+     * @param _name Name for the worker thread (used for logging)
+     */
+    explicit Worker(std::string _name) : m_name(std::move(_name)) {}
 
+    // Prevent copying
     Worker(Worker const&) = delete;
     Worker& operator=(Worker const&) = delete;
 
+    /**
+     * @brief Virtual destructor ensures proper cleanup of derived classes
+     */
     virtual ~Worker();
 
-    /// Starts worker thread; causes startedWorking() to be called.
+    /**
+     * @brief Start the worker thread
+     *
+     * Creates and starts a new thread to execute workLoop().
+     * Returns once the thread has fully started.
+     */
     void startWorking();
 
-    /// Triggers worker thread it should stop
+    /**
+     * @brief Signal the worker thread to stop
+     *
+     * Doesn't block waiting for the thread to actually stop.
+     */
     void triggerStopWorking();
 
-    /// Stop worker thread; causes call to stopWorking() and waits till thread has stopped.
+    /**
+     * @brief Stop the worker thread and wait for it to finish
+     *
+     * Changes the thread state to stopping and blocks until
+     * the thread has completely stopped.
+     */
     void stopWorking();
 
-    /// Whether or not this worker should stop
+    /**
+     * @brief Check if the worker should stop working
+     * @return true if the worker is not in the Started state
+     */
     bool shouldStop() const { return m_state != WorkerState::Started; }
 
-private:
+protected:
+    /**
+     * @brief Main work method to be implemented by derived classes
+     *
+     * This method is called on the worker thread and should contain
+     * the main processing loop.
+     */
     virtual void workLoop() = 0;
 
-    std::string m_name;
-
-    mutable Mutex x_work;                 ///< Lock for the network existence.
-    std::unique_ptr<std::thread> m_work;  ///< The network thread.
-    std::atomic<WorkerState> m_state = {WorkerState::Starting};
+private:
+    std::string m_name;                   ///< Worker name for logging
+    mutable Mutex x_work;                 ///< Mutex protecting the thread management
+    std::unique_ptr<std::thread> m_work;  ///< The worker thread
+    std::atomic<WorkerState> m_state{WorkerState::Starting};  ///< Current state of the worker
 };
 
 }  // namespace dev

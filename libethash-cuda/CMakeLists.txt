@@ -1,5 +1,6 @@
 find_package(CUDA REQUIRED)
 
+set(COMPUTE 86)
 set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};--ptxas-options=-v;-use_fast_math)
 
 if (NOT MSVC)
@@ -12,10 +13,6 @@ list(APPEND CUDA_NVCC_FLAGS_DEBUG -G)
 if(COMPUTE AND (COMPUTE GREATER 0))
 	list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_${COMPUTE},code=sm_${COMPUTE}")
 else()
-	if (CUDA_VERSION VERSION_LESS 11.0)
-		list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_30,code=sm_30")
-	endif()
-	list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_35,code=sm_35")
 	list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_50,code=sm_50")
 	list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_52,code=sm_52")
 	list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_53,code=sm_53")
@@ -35,6 +32,14 @@ else()
 	if(NOT CUDA_VERSION VERSION_LESS 11.1)
 		# Tesla GA10x cards, RTX Ampere – RTX 3080/3090, RTX A6000, RTX A40
 		list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_86,code=sm_86")
+	endif()
+	if(NOT CUDA_VERSION VERSION_LESS 11.8)
+		# Tesla GA10x cards, RTX Ampere – RTX 4080/4090, RTX 6000
+		list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_89,code=sm_89")
+	endif()
+	if(NOT CUDA_VERSION VERSION_LESS 12.6)
+		# Tesla GA10x cards, RTX Ampere – RTX 5080/5090
+		list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_100,code=sm_100")
 	endif()
 endif()
 
