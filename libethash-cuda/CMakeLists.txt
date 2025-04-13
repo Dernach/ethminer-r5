@@ -1,6 +1,5 @@
 find_package(CUDA REQUIRED)
 
-set(COMPUTE 86)
 set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};--ptxas-options=-v;-use_fast_math)
 
 if (NOT MSVC)

@@ -77,9 +77,5 @@ void swapByteOrder(uint8_t* buffer, size_t size);
  */
 std::string bytesToHex(const uint8_t* data, size_t length);
 
-// Pre-calculated size arrays for the first 2048 epochs
-extern const std::vector<uint64_t> datasetSizes;
-extern const std::vector<uint64_t> cacheSizes;
-
 }  // namespace eth
 }  // namespace dev

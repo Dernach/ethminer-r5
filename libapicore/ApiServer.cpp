@@ -50,6 +50,11 @@ void setJsonError(Json::Value& jResponse, int code, const std::string& message)
  * @param jResponse JSON response object to populate in case of error
  * @return True if successful, false otherwise
  */
+
+template <typename T>
+bool getRequestValueImpl(
+    const char* membername, T& refValue, Json::Value& jRequest, Json::Value& jResponse);
+
 template <typename T>
 bool getRequestValue(const char* membername, T& refValue, Json::Value& jRequest, bool optional,
     Json::Value& jResponse)
@@ -74,57 +79,8 @@ bool getRequestValue(const char* membername, T& refValue, Json::Value& jRequest,
 
     try
     {
-        // Extract the value using type-specific conversion
-        if constexpr (std::is_same_v<T, bool>)
-        {
-            if (!jRequest[membername].isBool())
-            {
-                setJsonError(jResponse, ERROR_INVALID_PARAMS,
-                    std::string("Invalid type of value '") + membername + "'");
-                return false;
-            }
-            refValue = jRequest[membername].asBool();
-        }
-        else if constexpr (std::is_same_v<T, unsigned>)
-        {
-            if (!jRequest[membername].isUInt())
-            {
-                setJsonError(jResponse, ERROR_INVALID_PARAMS,
-                    std::string("Invalid type of value '") + membername + "'");
-                return false;
-            }
-            refValue = jRequest[membername].asUInt();
-        }
-        else if constexpr (std::is_same_v<T, uint64_t>)
-        {
-            // Special handling for uint64_t since there's no isUInt64()
-            refValue = jRequest[membername].asUInt64();
-        }
-        else if constexpr (std::is_same_v<T, std::string>)
-        {
-            if (!jRequest[membername].isString())
-            {
-                setJsonError(jResponse, ERROR_INVALID_PARAMS,
-                    std::string("Invalid type of value '") + membername + "'");
-                return false;
-            }
-            refValue = jRequest[membername].asString();
-        }
-        else if constexpr (std::is_same_v<T, Json::Value>)
-        {
-            if (!jRequest[membername].isObject())
-            {
-                setJsonError(jResponse, ERROR_INVALID_PARAMS,
-                    std::string("Invalid type of value '") + membername + "'");
-                return false;
-            }
-            refValue = jRequest[membername];
-        }
-        else
-        {
-            // Fallback for other types
-            refValue = jRequest[membername].as<T>();
-        }
+        // Type-specific handling without using if constexpr
+        return getRequestValueImpl(membername, refValue, jRequest, jResponse);
     }
     catch (const std::exception&)
     {
@@ -132,8 +88,81 @@ bool getRequestValue(const char* membername, T& refValue, Json::Value& jRequest,
             jResponse, ERROR_INVALID_PARAMS, std::string("Bad value in '") + membername + "'");
         return false;
     }
+}
 
+// Spécialisations pour chaque type
+template <>
+bool getRequestValueImpl(
+    const char* membername, bool& refValue, Json::Value& jRequest, Json::Value& jResponse)
+{
+    if (!jRequest[membername].isBool())
+    {
+        setJsonError(jResponse, ERROR_INVALID_PARAMS,
+            std::string("Invalid type of value '") + membername + "'");
+        return false;
+    }
+    refValue = jRequest[membername].asBool();
     return true;
+}
+
+template <>
+bool getRequestValueImpl(
+    const char* membername, unsigned& refValue, Json::Value& jRequest, Json::Value& jResponse)
+{
+    if (!jRequest[membername].isUInt())
+    {
+        setJsonError(jResponse, ERROR_INVALID_PARAMS,
+            std::string("Invalid type of value '") + membername + "'");
+        return false;
+    }
+    refValue = jRequest[membername].asUInt();
+    return true;
+}
+
+template <>
+bool getRequestValueImpl(
+    const char* membername, uint64_t& refValue, Json::Value& jRequest, Json::Value& jResponse)
+{
+    refValue = jRequest[membername].asUInt64();
+    return true;
+}
+
+template <>
+bool getRequestValueImpl(
+    const char* membername, std::string& refValue, Json::Value& jRequest, Json::Value& jResponse)
+{
+    if (!jRequest[membername].isString())
+    {
+        setJsonError(jResponse, ERROR_INVALID_PARAMS,
+            std::string("Invalid type of value '") + membername + "'");
+        return false;
+    }
+    refValue = jRequest[membername].asString();
+    return true;
+}
+
+template <>
+bool getRequestValueImpl(
+    const char* membername, Json::Value& refValue, Json::Value& jRequest, Json::Value& jResponse)
+{
+    if (!jRequest[membername].isObject())
+    {
+        setJsonError(jResponse, ERROR_INVALID_PARAMS,
+            std::string("Invalid type of value '") + membername + "'");
+        return false;
+    }
+    refValue = jRequest[membername];
+    return true;
+}
+
+// Implantation par défaut qui sera utilisée pour les autres types
+template <typename T>
+bool getRequestValueImpl(
+    const char* membername, T& refValue, Json::Value& jRequest, Json::Value& jResponse)
+{
+    setJsonError(
+        jResponse, ERROR_INVALID_PARAMS, std::string("Unsupported type for '") + membername + "'");
+    return false;
 }
 
 /**
@@ -188,7 +217,7 @@ bool parseRequestId(Json::Value& jRequest, Json::Value& jResponse)
     setJsonError(jResponse, ERROR_INVALID_REQUEST, "Invalid Request (id has invalid type)");
     return false;
 }
-}
+}  // namespace
 
 ApiServer::ApiServer(std::string address, int portnum, std::string password)
   : m_password(std::move(password)),
@@ -866,7 +895,7 @@ Json::Value ApiConnection::getMinerStat1()
                     << t.miners.at(gpuIndex).sensors.fanP << (gpuIndex < numGpus - 1 ? ";" : "");
     }
 
-        Json::Value jRes;
+    Json::Value jRes;
     jRes[0] = ethminer_get_buildinfo()->project_name_with_version;  // miner version
     jRes[1] = std::to_string(runningTime.count());                  // running time in minutes
     jRes[2] = totalMhEth.str();     // total ETH hashrate, accepted shares, rejected shares
@@ -944,7 +973,8 @@ Json::Value ApiConnection::getMinerStatDetailPerMiner(
         Farm::f().get_nonce_scrambler() + (static_cast<uint64_t>(index) << segment_width);
 
     jsegment.append(toHex(gpustartnonce, HexPrefix::Add));
-    jsegment.append(toHex(gpustartnonce + (1ULL << segment_width), HexPrefix::Add));
+    jsegment.append(
+        toHex(static_cast<uint64_t>(gpustartnonce + (1ULL << segment_width)), HexPrefix::Add));
     mininginfo["segment"] = jsegment;
 
     // Hashrate info

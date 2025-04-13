@@ -10,7 +10,7 @@ namespace
  * @param offset Starting offset in array
  * @return Converted uint32_t value
  */
-DEV_INLINE __forceinline__ uint32_t bytes_to_uint32(const uint8_t* __restrict__ bytes, int offset)
+DEV_INLINE uint32_t bytes_to_uint32(const uint8_t* __restrict__ bytes, int offset)
 {
 #ifdef SAFE_MEMORY_ACCESS
     // Safe, aligned access implementation
@@ -29,7 +29,7 @@ DEV_INLINE __forceinline__ uint32_t bytes_to_uint32(const uint8_t* __restrict__ 
  * @param bytes Destination byte array
  * @param offset Starting offset in array
  */
-DEV_INLINE __forceinline__ void uint32_to_bytes(
+DEV_INLINE void uint32_to_bytes(
     uint32_t value, uint8_t* __restrict__ bytes, int offset)
 {
 #ifdef SAFE_MEMORY_ACCESS
